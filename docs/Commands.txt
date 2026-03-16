@@ -1,0 +1,5 @@
+npm run dev -> correr el Front-end
+
+dotnet run -> correr el Backend (solo el csproj)
+
+Psswrd de MSQL -> 12345
