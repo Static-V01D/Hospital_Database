@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HospitalAPI.Data;
 using HospitalAPI.Models;
+using HospitalAPI.DTOs;
 
 namespace HospitalAPI.Controllers
 {
@@ -16,36 +17,45 @@ namespace HospitalAPI.Controllers
             _context = context;
         }
 
+        private EspecialidadDTO MapToEspecialidadDTO(Especialidad especialidad)
+        {
+            if (especialidad == null) return null;
+
+            return new EspecialidadDTO
+            {
+                IdEspecialidad = especialidad.IdEspecialidad,
+                Nombre = especialidad.Nombre
+            };
+        }
+
         // GET: api/especialidades
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Especialidad>>> GetEspecialidades()
+        public async Task<ActionResult<IEnumerable<EspecialidadDTO>>> GetEspecialidades()
         {
-            return await _context.Especialidades
-                                 .Include(e => e.Doctores)
-                                 .ToListAsync();
+            var especialidades = await _context.Especialidades.ToListAsync();
+            return especialidades.Select(MapToEspecialidadDTO).ToList();
         }
 
         // GET: api/especialidades/1
         [HttpGet("{id}")]
-        public async Task<ActionResult<Especialidad>> GetEspecialidad(int id)
+        public async Task<ActionResult<EspecialidadDTO>> GetEspecialidad(int id)
         {
             var especialidad = await _context.Especialidades
-                                             .Include(e => e.Doctores)
                                              .FirstOrDefaultAsync(e => e.IdEspecialidad == id);
 
             if (especialidad == null)
                 return NotFound();
 
-            return especialidad;
+            return MapToEspecialidadDTO(especialidad);
         }
 
         // POST: api/especialidades
         [HttpPost]
-        public async Task<ActionResult<Especialidad>> PostEspecialidad(Especialidad especialidad)
+        public async Task<ActionResult<EspecialidadDTO>> PostEspecialidad(Especialidad especialidad)
         {
             _context.Especialidades.Add(especialidad);
             await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetEspecialidad), new { id = especialidad.IdEspecialidad }, especialidad);
+            return CreatedAtAction(nameof(GetEspecialidad), new { id = especialidad.IdEspecialidad }, MapToEspecialidadDTO(especialidad));
         }
 
         // PUT: api/especialidades/1

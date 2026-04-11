@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HospitalAPI.Data;
 using HospitalAPI.Models;
+using HospitalAPI.DTOs;
 
 namespace HospitalAPI.Controllers
 {
@@ -16,38 +17,61 @@ namespace HospitalAPI.Controllers
             _context = context;
         }
 
+        private DoctorDTO MapToDoctorDTO(Doctor doctor)
+        {
+            if (doctor == null) return null;
+
+            return new DoctorDTO
+            {
+                IdDoctor = doctor.IdDoctor,
+                Nombre = doctor.Nombre,
+                Apellido = doctor.Apellido,
+                IdEspecialidad = doctor.IdEspecialidad,
+                Especialidad = doctor.Especialidad != null ? new EspecialidadDTO
+                {
+                    IdEspecialidad = doctor.Especialidad.IdEspecialidad,
+                    Nombre = doctor.Especialidad.Nombre
+                } : null
+            };
+        }
+
         // GET: api/doctores
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Doctor>>> GetDoctores()
+        public async Task<ActionResult<IEnumerable<DoctorDTO>>> GetDoctores()
         {
-            return await _context.Doctores
+            var doctores = await _context.Doctores
                                  .Include(d => d.Especialidad)
-                                 .Include(d => d.Citas)
                                  .ToListAsync();
+
+            return doctores.Select(MapToDoctorDTO).ToList();
         }
 
         // GET: api/doctores/1
         [HttpGet("{id}")]
-        public async Task<ActionResult<Doctor>> GetDoctor(int id)
+        public async Task<ActionResult<DoctorDTO>> GetDoctor(int id)
         {
             var doctor = await _context.Doctores
                                        .Include(d => d.Especialidad)
-                                       .Include(d => d.Citas)
                                        .FirstOrDefaultAsync(d => d.IdDoctor == id);
 
             if (doctor == null)
                 return NotFound();
 
-            return doctor;
+            return MapToDoctorDTO(doctor);
         }
 
         // POST: api/doctores
         [HttpPost]
-        public async Task<ActionResult<Doctor>> PostDoctor(Doctor doctor)
+        public async Task<ActionResult<DoctorDTO>> PostDoctor(Doctor doctor)
         {
             _context.Doctores.Add(doctor);
             await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetDoctor), new { id = doctor.IdDoctor }, doctor);
+            
+            var createdDoctor = await _context.Doctores
+                                             .Include(d => d.Especialidad)
+                                             .FirstOrDefaultAsync(d => d.IdDoctor == doctor.IdDoctor);
+
+            return CreatedAtAction(nameof(GetDoctor), new { id = doctor.IdDoctor }, MapToDoctorDTO(createdDoctor));
         }
 
         // PUT: api/doctores/1

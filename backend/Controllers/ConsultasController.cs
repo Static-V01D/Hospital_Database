@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HospitalAPI.Data;
 using HospitalAPI.Models;
+using HospitalAPI.DTOs;
 
 namespace HospitalAPI.Controllers
 {
@@ -16,42 +17,47 @@ namespace HospitalAPI.Controllers
             _context = context;
         }
 
+        private ConsultaDTO MapToConsultaDTO(Consulta consulta)
+        {
+            if (consulta == null) return null;
+
+            return new ConsultaDTO
+            {
+                IdConsulta = consulta.IdConsulta,
+                IdCita = consulta.IdCita,
+                Diagnostico = consulta.Diagnostico,
+                Observaciones = consulta.Observaciones
+            };
+        }
+
         // GET: api/consultas
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Consulta>>> GetConsultas()
+        public async Task<ActionResult<IEnumerable<ConsultaDTO>>> GetConsultas()
         {
-            return await _context.Consultas
-                                 .Include(c => c.Cita)
-                                 .ThenInclude(c => c.Paciente)
-                                 .Include(c => c.Cita)
-                                 .ThenInclude(c => c.Doctor)
-                                 .ToListAsync();
+            var consultas = await _context.Consultas.ToListAsync();
+            return consultas.Select(MapToConsultaDTO).ToList();
         }
 
         // GET: api/consultas/1
         [HttpGet("{id}")]
-        public async Task<ActionResult<Consulta>> GetConsulta(int id)
+        public async Task<ActionResult<ConsultaDTO>> GetConsulta(int id)
         {
             var consulta = await _context.Consultas
-                                         .Include(c => c.Cita)
-                                         .ThenInclude(c => c.Paciente)
-                                         .Include(c => c.Cita)
-                                         .ThenInclude(c => c.Doctor)
                                          .FirstOrDefaultAsync(c => c.IdConsulta == id);
 
             if (consulta == null)
                 return NotFound();
 
-            return consulta;
+            return MapToConsultaDTO(consulta);
         }
 
         // POST: api/consultas
         [HttpPost]
-        public async Task<ActionResult<Consulta>> PostConsulta(Consulta consulta)
+        public async Task<ActionResult<ConsultaDTO>> PostConsulta(Consulta consulta)
         {
             _context.Consultas.Add(consulta);
             await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetConsulta), new { id = consulta.IdConsulta }, consulta);
+            return CreatedAtAction(nameof(GetConsulta), new { id = consulta.IdConsulta }, MapToConsultaDTO(consulta));
         }
 
         // PUT: api/consultas/1
