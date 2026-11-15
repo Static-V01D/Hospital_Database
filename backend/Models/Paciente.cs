@@ -3,11 +3,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HospitalAPI.Models
 {
-    [Table("paciente")] // nombre de la tabla en MySQL
+    [Table("paciente")] // nombre de la tabla en PostgreSQL
     public class Paciente
     {
         [Key]
-        [Column("id_paciente")] // nombre real en MySQL
+        [Column("id_paciente")] // nombre real en PostgreSQL
         public int IdPaciente { get; set; }
 
         [Column("nombre")]
@@ -16,7 +16,7 @@ namespace HospitalAPI.Models
         [Column("apellido")]
         public string Apellido { get; set; }
 
-        [Column("fecha_nacimiento")]
+        [Column("fecha_nacimiento", TypeName = "date")]
         public DateTime? FechaNacimiento { get; set; }
 
         [Column("telefono")]

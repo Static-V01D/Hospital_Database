@@ -17,10 +17,10 @@ namespace HospitalAPI.Models
         [Column("id_doctor")]
         public int IdDoctor { get; set; }
 
-        [Column("fecha")]
+        [Column("fecha", TypeName = "date")]
         public DateTime Fecha { get; set; }
 
-        [Column("hora")]
+        [Column("hora", TypeName = "time")]
         public TimeSpan Hora { get; set; }
 
         [Column("motivo")]

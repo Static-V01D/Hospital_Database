@@ -1,5 +1,12 @@
-npm run dev -> correr el Front-end
+npm run dev -> correr el Front-end (carpeta frontend/)
 
-dotnet run -> correr el Backend (solo el csproj)
+dotnet run -> correr el Backend (carpeta backend/, solo el csproj)
 
-Psswrd de MSQL -> 12345
+Base de datos -> Supabase (PostgreSQL), proyecto "Hospital_Database"
+
+Contraseña de la base de datos -> NO se guarda en el repositorio.
+  1. Supabase Dashboard -> proyecto Hospital_Database -> Database -> Settings -> "Reset database password"
+  2. En la carpeta backend/ (una sola vez por computadora):
+       dotnet user-secrets set "Supabase:DbPassword" "<contraseña>"
+
+Probar la conexión -> http://localhost:5198/api/health

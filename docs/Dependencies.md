@@ -4,14 +4,13 @@
 
 To run the backend, ensure you have the following installed:
 
-- [.NET SDK](https://dotnet.microsoft.com/download) (version 6.0 or later, based on `Hospital_Database.csproj`)
+- [.NET SDK](https://dotnet.microsoft.com/download) 8.0 (see `Hospital_Database.csproj`)
 - Restore NuGet packages by running `dotnet restore` in the `backend/` directory.
 
-Key NuGet dependencies (inferred from typical ASP.NET Core project structure with Controllers and Models):
-- `Microsoft.AspNetCore` (for web API)
-- `Microsoft.EntityFrameworkCore` (for database ORM, assuming Entity Framework usage in `Data/Models/`)
-- `Microsoft.EntityFrameworkCore.SqlServer` or `Npgsql` (for database provider, check `appsettings.json` for connection string)
-- `Swashbuckle.AspNetCore` (for Swagger API documentation, if used)
+Key NuGet dependencies:
+- `Npgsql.EntityFrameworkCore.PostgreSQL` (Entity Framework Core provider for PostgreSQL / Supabase)
+- `Swashbuckle.AspNetCore` (Swagger API documentation)
+- `Microsoft.AspNetCore.OpenApi`
 
 Run the backend with `dotnet run` in `backend/`.
 
@@ -33,11 +32,22 @@ Run the frontend with `npm run dev` in `frontend/`.
 
 ## Database
 
-- Install a database server (e.g., SQL Server, PostgreSQL, or SQLite, based on schema in `database/schema/`)
-- Run seed scripts from `database/seeds/` to populate data.
+The database is PostgreSQL hosted on Supabase (project `Hospital_Database`); nothing needs to be installed locally.
+
+- Schema: `database/schema/init.sql` (already applied to the Supabase project).
+- Test data: `database/seeds/seed.sql` (already loaded; run it only on empty tables).
+- Both can be re-run from the Supabase SQL Editor on a fresh project.
+
+The database password is never stored in the repository. Set it once per machine from `backend/`:
+
+```bash
+dotnet user-secrets set "Supabase:DbPassword" "<password>"
+```
+
+(or the environment variable `Supabase__DbPassword`). Get or reset the password in the Supabase Dashboard under Database → Settings. The non-secret part of the connection string (host, port, user) lives in `backend/appsettings.json`.
 
 ## Additional Setup
 
-- Ensure ports are configured correctly (backend typically on 5000-5001, frontend on 3000 or Vite default).
-- For full integration, update `appsettings.json` with correct database connection strings.
+- Backend runs on http://localhost:5198, frontend on http://localhost:5173 (Vite proxies `/api` to the backend).
+- `GET http://localhost:5198/api/health` confirms the API can reach the database.
 - Refer to `README.md` and `README(React).md` for detailed setup instructions.

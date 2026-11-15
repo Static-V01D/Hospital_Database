@@ -5,7 +5,7 @@ Full stack hospital management platform.
 Stack:
 - React frontend
 - ASP.NET Core API
-- MySQL database
+- PostgreSQL database (Supabase)
 
 Modules:
 - Patients

@@ -1,6 +1,31 @@
 @Hospital_Database_HostAddress = http://localhost:5198
 
-GET {{Hospital_Database_HostAddress}}/weatherforecast/
+GET {{Hospital_Database_HostAddress}}/api/health
+Accept: application/json
+
+###
+
+GET {{Hospital_Database_HostAddress}}/api/Especialidades
+Accept: application/json
+
+###
+
+GET {{Hospital_Database_HostAddress}}/api/Doctores
+Accept: application/json
+
+###
+
+GET {{Hospital_Database_HostAddress}}/api/Pacientes
+Accept: application/json
+
+###
+
+GET {{Hospital_Database_HostAddress}}/api/Citas
+Accept: application/json
+
+###
+
+GET {{Hospital_Database_HostAddress}}/api/Consultas
 Accept: application/json
 
 ###
