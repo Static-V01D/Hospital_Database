@@ -370,6 +370,9 @@ button { cursor: pointer; }
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid-main, .grid-3 { grid-template-columns: 1fr; }
 }
+@media (max-width: 1200px) {
+  .hide-md { display: none; }
+}
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; }
   /* visibility keeps the closed drawer out of the tab order; its delay lets the slide-out finish first */

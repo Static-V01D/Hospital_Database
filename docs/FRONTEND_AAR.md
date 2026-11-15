@@ -37,4 +37,5 @@ Preview config: `.claude/launch.json` → "frontend" (port 5173).
   - patient file can be opened with the keyboard; dialogs have accessible names and focus
   - honest delete-error messages; dashboard date refreshes; mobile row actions
 - Lint and build are clean; checked in the browser: dashboard in the evening, empty-submit errors on Citas, Consultas page.
-- Remaining nice-to-haves: the Consultas Diagnóstico column truncates hard at about 800px width. Re-check everything against the live API once MySQL is running.
+- Consultas table fixed: Diagnóstico wraps to 2 lines. Observaciones is hidden at ≤1200px via the new DataTable `hideMd` column option (`.hide-md` in index.css) and is still shown in the detail view. Checked at 1440, 1000 and 375px with no overflow.
+- Remaining: re-check everything against the live API once MySQL is running.

@@ -205,16 +205,18 @@ export function Field({ label, required, hint, error, children }) {
 }
 
 // ---------------- table ----------------
-// columns: [{ key, header, render?(row), className?, hideSm? }]
+// columns: [{ key, header, render?(row), className?, hideSm?, hideMd? }]
+// hideSm hides the column at ≤860px, hideMd at ≤1200px (see index.css).
+const colCls = (c) => [c.className, c.hideSm && 'hide-sm', c.hideMd && 'hide-md'].filter(Boolean).join(' ') || undefined
 export function DataTable({ columns, rows, rowKey, loading, empty, onRowClick, actions, footer }) {
   if (loading) {
     return (
       <div className="table-wrap">
         <table className="table">
-          <thead><tr>{columns.map((c) => <th key={c.key} className={c.hideSm ? 'hide-sm' : ''}>{c.header}</th>)}{actions && <th />}</tr></thead>
+          <thead><tr>{columns.map((c) => <th key={c.key} className={colCls(c)}>{c.header}</th>)}{actions && <th />}</tr></thead>
           <tbody>
             {Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i}>{columns.map((c) => <td key={c.key} className={c.hideSm ? 'hide-sm' : ''}><div className="skeleton" style={{ width: `${50 + ((i * 17 + c.key.length * 7) % 40)}%` }} /></td>)}{actions && <td />}</tr>
+              <tr key={i}>{columns.map((c) => <td key={c.key} className={colCls(c)}><div className="skeleton" style={{ width: `${50 + ((i * 17 + c.key.length * 7) % 40)}%` }} /></td>)}{actions && <td />}</tr>
             ))}
           </tbody>
         </table>
@@ -228,7 +230,7 @@ export function DataTable({ columns, rows, rowKey, loading, empty, onRowClick, a
         <table className="table">
           <thead>
             <tr>
-              {columns.map((c) => <th key={c.key} className={[c.className, c.hideSm && 'hide-sm'].filter(Boolean).join(' ')}>{c.header}</th>)}
+              {columns.map((c) => <th key={c.key} className={colCls(c)}>{c.header}</th>)}
               {actions && <th className="actions"><span className="sr-only">Acciones</span></th>}
             </tr>
           </thead>
@@ -248,7 +250,7 @@ export function DataTable({ columns, rows, rowKey, loading, empty, onRowClick, a
                 } : undefined}
               >
                 {columns.map((c) => (
-                  <td key={c.key} className={[c.className, c.hideSm && 'hide-sm'].filter(Boolean).join(' ')}>{c.render ? c.render(r) : r[c.key] ?? '—'}</td>
+                  <td key={c.key} className={colCls(c)}>{c.render ? c.render(r) : r[c.key] ?? '—'}</td>
                 ))}
                 {actions && (
                   <td className="actions" onClick={(e) => e.stopPropagation()}>

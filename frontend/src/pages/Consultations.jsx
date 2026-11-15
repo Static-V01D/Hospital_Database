@@ -18,10 +18,11 @@ import {
 const RESOURCE_KEYS = ['consultas', 'citas', 'pacientes', 'doctores', 'especialidades']
 const EMPTY_FORM = { mode: 'create', idCita: '', diagnostico: '', observaciones: '' }
 const LONG_DATE = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
-// One-line ellipsis that, unlike nowrap, still lets the column shrink on narrow screens.
-const CLAMP_1 = { display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-all' }
-const DIAG_STYLE = { ...CLAMP_1, maxWidth: 280 }
-const OBS_STYLE = { ...CLAMP_1, maxWidth: 200 }
+// Two-line clamp that wraps on word boundaries (long single words still break), so text stays
+// readable at medium widths instead of collapsing to a few letters. Full text is in the title tooltip.
+const CLAMP_2 = { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }
+const DIAG_STYLE = { ...CLAMP_2, minWidth: 160, maxWidth: 320 }
+const OBS_STYLE = { ...CLAMP_2, minWidth: 140, maxWidth: 260 }
 
 // Accent- and case-insensitive search ("perez" matches "Pérez").
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -198,7 +199,7 @@ export default function Consultations({ query, navigate }) {
       hideSm: true,
       render: (r) => (
         <>
-          <div>{nameOr(r.doctor, '—')}</div>
+          <div style={{ whiteSpace: 'nowrap' }}>{nameOr(r.doctor, '—')}</div>
           <div className="cell-sub">{r.especialidad?.nombre ?? 'Sin especialidad'}</div>
         </>
       ),
@@ -212,6 +213,7 @@ export default function Consultations({ query, navigate }) {
       key: 'observaciones',
       header: 'Observaciones',
       hideSm: true,
+      hideMd: true, // shown in the detail modal; keeps row actions on screen at medium widths
       render: (r) => <div className="muted" style={OBS_STYLE} title={r.observaciones}>{r.observaciones || '—'}</div>,
     },
   ]
