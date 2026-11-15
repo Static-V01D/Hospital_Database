@@ -56,7 +56,7 @@ export default function App() {
 
   useEffect(() => {
     window.scrollTo(0, 0)
-    document.title = `${current.label} · Clínica Central`
+    document.title = `${current.label} · NOVAMED`
   }, [route.page, current.label])
 
   // Mobile drawer: move focus into it on open; Escape closes it and returns focus to the menu button.
@@ -86,9 +86,9 @@ export default function App() {
     <div className="app">
       <aside id="app-sidebar" ref={sidebarRef} className={`sidebar${menuOpen ? ' open' : ''}`} aria-label="Navegación principal">
         <a className="brand" href="#/panel" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <Logo size={34} />
+          <Logo size={38} />
           <div>
-            <div className="brand-name">Clínica Central</div>
+            <div className="brand-name">NOVAMED</div>
             <div className="brand-sub">Gestión hospitalaria</div>
           </div>
         </a>
@@ -128,7 +128,7 @@ export default function App() {
             <Icon name="menu" size={20} />
           </button>
           <div className="crumbs">
-            <span className="hide-sm">Clínica Central</span>
+            <span className="hide-sm">NOVAMED</span>
             <Icon name="chevronRight" size={14} className="hide-sm" />
             <strong>{current.label}</strong>
           </div>

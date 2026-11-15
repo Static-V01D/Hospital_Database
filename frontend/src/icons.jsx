@@ -33,11 +33,23 @@ export default function Icon({ name, size = 18, className, ...rest }) {
   )
 }
 
+// Marca NOVAMED: cruz médica (medicina) dentro de una red hexagonal de nodos
+// conectados (innovación), en el mismo color de los botones (--brand).
+// Mismo dibujo que public/favicon.svg.
 export function Logo({ size = 32 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="9" fill="var(--brand)" />
-      <path d="M13 8h6v5h5v6h-5v5h-6v-5H8v-6h5V8Z" fill="#fff" />
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden="true" style={{ flex: 'none' }}>
+      <rect width="48" height="48" rx="12" fill="var(--brand)" />
+      <path d="M24 7.5 38.29 15.75v16.5L24 40.5 9.71 32.25v-16.5z" stroke="#fff" strokeOpacity="0.6" strokeWidth="1.8" strokeLinejoin="round" />
+      <g fill="#fff">
+        <circle cx="24" cy="7.5" r="2.9" />
+        <circle cx="38.29" cy="32.25" r="2.9" />
+        <circle cx="9.71" cy="32.25" r="2.9" />
+        <circle cx="38.29" cy="15.75" r="2" />
+        <circle cx="24" cy="40.5" r="2" />
+        <circle cx="9.71" cy="15.75" r="2" />
+        <path d="M21 15.5h6v5.5h5.5v6H27v5.5h-6V27h-5.5v-6H21z" stroke="#fff" strokeWidth="1" strokeLinejoin="round" />
+      </g>
     </svg>
   )
 }
