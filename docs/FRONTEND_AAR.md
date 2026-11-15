@@ -31,4 +31,10 @@ Preview config: `.claude/launch.json` → "frontend" (port 5173).
 - NOT tested against the real backend + MySQL (not installed here). Check the POST/PUT bodies against the live API.
 - Not reviewed: the UX and React-correctness review passes timed out (only the API-contract review finished).
 - Backend gaps: no PUT /api/Pacientes (patients can't be edited); no ProblemDetails, so DB errors show a generic message.
-- Nothing committed yet.
+- Committed as `7393f29`, then a per-file React/UX review → verify → fix pass was committed on top (see `git log`). That pass fixed:
+  - demo dates now use the local date (the dashboard's "today" was empty in the evening)
+  - Spanish inline form errors instead of browser tooltips
+  - patient file can be opened with the keyboard; dialogs have accessible names and focus
+  - honest delete-error messages; dashboard date refreshes; mobile row actions
+- Lint and build are clean; checked in the browser: dashboard in the evening, empty-submit errors on Citas, Consultas page.
+- Remaining nice-to-haves: the Consultas Diagnóstico column truncates hard at about 800px width. Re-check everything against the live API once MySQL is running.

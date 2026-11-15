@@ -99,7 +99,9 @@ const formFromCita = (c) => ({
   motivo: c.motivo ?? '',
 })
 
-function validate(form, { pacientesById, doctoresById, citas, editingId }) {
+const QUARTER_HOUR_MSG = 'Use intervalos de 15 minutos (:00, :15, :30 o :45).'
+
+function validate(form, { pacientesById, doctoresById, citas, editingId, quarterHour }) {
   const e = {}
   if (!form.idPaciente) e.idPaciente = 'Seleccione el paciente.'
   else if (!pacientesById[form.idPaciente]) e.idPaciente = 'El paciente seleccionado no existe.'
@@ -107,6 +109,7 @@ function validate(form, { pacientesById, doctoresById, citas, editingId }) {
   else if (!doctoresById[form.idDoctor]) e.idDoctor = 'El médico seleccionado no existe.'
   if (!/^\d{4}-\d{2}-\d{2}$/.test(form.fecha)) e.fecha = 'Indique una fecha válida.'
   if (!/^\d{2}:\d{2}$/.test(hhmm(form.hora))) e.hora = 'Indique una hora válida.'
+  else if (quarterHour && Number(hhmm(form.hora).slice(3)) % 15) e.hora = QUARTER_HOUR_MSG
   if (!form.motivo.trim()) e.motivo = 'Describa el motivo de la cita.'
 
   // Evita dobles reservas en el mismo horario.
@@ -252,6 +255,19 @@ export default function Appointments({ query, navigate }) {
 
   const closeDelete = useCallback(() => setToDelete(null), [])
 
+  // 15-minute slots, except when editing a legacy cita booked off-grid (keep its minute editable).
+  const timeStep = editing && Number(hhmm(editing.hora).slice(3)) % 15 ? 60 : 900
+  const validateForm = () =>
+    validate(form, { pacientesById, doctoresById, citas, editingId: editing?.idCita, quarterHour: timeStep === 900 })
+
+  // The time input keeps step={timeStep} for 15-minute picker increments, so the browser's step
+  // check runs before onSubmit. Swap its native tooltip for the same inline Spanish errors.
+  const onTimeInvalid = (e) => {
+    e.preventDefault()
+    const errs = validateForm()
+    setErrors(errs.hora ? errs : { ...errs, hora: QUARTER_HOUR_MSG })
+  }
+
   const setField = (name) => (e) => {
     const value = e.target.value
     setForm((f) => ({ ...f, [name]: value }))
@@ -261,7 +277,7 @@ export default function Appointments({ query, navigate }) {
   }
 
   const submit = async () => {
-    const errs = validate(form, { pacientesById, doctoresById, citas, editingId: editing?.idCita })
+    const errs = validateForm()
     if (Object.keys(errs).length) {
       setErrors(errs)
       return
@@ -435,7 +451,6 @@ export default function Appointments({ query, navigate }) {
   }
 
   // ---------- form helpers ----------
-  const timeStep = editing && Number(hhmm(editing.hora).slice(3)) % 15 ? 60 : 900
   const deleteWhen = toDelete ? `${fmtDate(toDelete.fecha, LONG_DATE)} a las ${fmtTime(toDelete.hora)}` : ''
 
   return (
@@ -529,7 +544,7 @@ export default function Appointments({ query, navigate }) {
             ) : undefined
           }
         >
-          <select className={inputCls('select', errors.idPaciente)} value={form.idPaciente} onChange={setField('idPaciente')} required>
+          <select className={inputCls('select', errors.idPaciente)} value={form.idPaciente} onChange={setField('idPaciente')}>
             <option value="">{firstLoad ? 'Cargando pacientes…' : 'Seleccione un paciente'}</option>
             {pacientesSorted.map((p) => <option key={p.idPaciente} value={p.idPaciente}>{fullName(p)}</option>)}
           </select>
@@ -548,7 +563,7 @@ export default function Appointments({ query, navigate }) {
             ) : undefined
           }
         >
-          <select className={inputCls('select', errors.idDoctor)} value={form.idDoctor} onChange={setField('idDoctor')} required>
+          <select className={inputCls('select', errors.idDoctor)} value={form.idDoctor} onChange={setField('idDoctor')}>
             <option value="">{firstLoad ? 'Cargando médicos…' : 'Seleccione un médico'}</option>
             {doctorGroups.map((g) => (
               <optgroup key={g.label} label={g.label}>
@@ -565,10 +580,17 @@ export default function Appointments({ query, navigate }) {
             error={errors.fecha}
             hint={form.fecha && form.fecha < today ? 'Fecha anterior a hoy: la cita aparecerá como pasada.' : undefined}
           >
-            <input type="date" className={inputCls('input', errors.fecha)} value={form.fecha} onChange={setField('fecha')} required />
+            <input type="date" className={inputCls('input', errors.fecha)} value={form.fecha} onChange={setField('fecha')} />
           </Field>
           <Field label="Hora" required error={errors.hora} hint={timeStep === 900 ? 'Intervalos de 15 minutos.' : undefined}>
-            <input type="time" step={timeStep} className={inputCls('input', errors.hora)} value={form.hora} onChange={setField('hora')} required />
+            <input
+              type="time"
+              step={timeStep}
+              className={inputCls('input', errors.hora)}
+              value={form.hora}
+              onChange={setField('hora')}
+              onInvalid={onTimeInvalid}
+            />
           </Field>
         </div>
 
@@ -580,7 +602,6 @@ export default function Appointments({ query, navigate }) {
             placeholder="Ej.: chequeo anual, seguimiento de laboratorio, dolor de cabeza persistente…"
             value={form.motivo}
             onChange={setField('motivo')}
-            required
           />
         </Field>
       </FormModal>
@@ -594,8 +615,8 @@ export default function Appointments({ query, navigate }) {
         message={
           toDelete && (
             <>
-              Se eliminará la cita de <strong>{fullName(toDelete.pac)}</strong> del {endSentence(deleteWhen)} Si la cita
-              tiene una consulta registrada, deberá eliminar la consulta primero. Esta acción no se puede deshacer.
+              Se eliminará la cita de <strong>{fullName(toDelete.pac)}</strong> del {endSentence(deleteWhen)} Esta acción no se
+              puede deshacer.
             </>
           )
         }

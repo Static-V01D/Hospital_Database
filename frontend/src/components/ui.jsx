@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import Icon from '../icons.jsx'
 import { api, initials } from '../api.js'
 
@@ -27,23 +27,30 @@ export const byId = (list = [], idField) => Object.fromEntries(list.map((x) => [
 // ---------------- toast ----------------
 const ToastCtx = createContext(() => {})
 export const useToast = () => useContext(ToastCtx)
+// Errors stay longer (they tend to be longer and need action) and every toast can be dismissed.
+const TOAST_MS = { success: 3600, error: 8000 }
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([])
+  const dismiss = useCallback((id) => setItems((xs) => xs.filter((t) => t.id !== id)), [])
   const push = useCallback((message, type = 'success') => {
     const id = Math.random().toString(36).slice(2)
     setItems((xs) => [...xs, { id, message, type }])
-    setTimeout(() => setItems((xs) => xs.filter((t) => t.id !== id)), 3600)
-  }, [])
+    setTimeout(() => dismiss(id), TOAST_MS[type] ?? TOAST_MS.success)
+  }, [dismiss])
+  const render = (t) => (
+    <div key={t.id} className={`toast ${t.type}`}>
+      <span className="ti"><Icon name={t.type === 'error' ? 'x' : 'check'} size={13} strokeWidth={2.5} /></span>
+      <span className="toast-msg">{t.message}</span>
+      <IconButton icon="x" label="Cerrar aviso" onClick={() => dismiss(t.id)} />
+    </div>
+  )
+  // Two persistent live regions: confirmations are polite, errors are assertive.
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts" role="status" aria-live="polite">
-        {items.map((t) => (
-          <div key={t.id} className={`toast ${t.type}`}>
-            <span className="ti"><Icon name={t.type === 'error' ? 'x' : 'check'} size={13} strokeWidth={2.5} /></span>
-            {t.message}
-          </div>
-        ))}
+      <div className="toasts">
+        <div className="toast-stack" role="status" aria-live="polite">{items.filter((t) => t.type !== 'error').map(render)}</div>
+        <div className="toast-stack" role="alert">{items.filter((t) => t.type === 'error').map(render)}</div>
       </div>
     </ToastCtx.Provider>
   )
@@ -142,11 +149,12 @@ export function SearchInput({ value, onChange, placeholder = 'Buscar…' }) {
   )
 }
 
-export function Segmented({ options, value, onChange }) {
+// Toggle group (filters / sort), not tabs: each option is a pressed/unpressed button.
+export function Segmented({ options, value, onChange, label = 'Opciones de visualización' }) {
   return (
-    <div className="segmented" role="tablist">
+    <div className="segmented" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="tab" aria-selected={value === o.value} className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" aria-pressed={value === o.value} className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>
           {o.label}
         </button>
       ))}
@@ -177,12 +185,21 @@ export function ErrorState({ message, onRetry }) {
 }
 
 // ---------------- form fields ----------------
+// Links the error (or hint) text to the control and flags it invalid, unless the caller already did.
 export function Field({ label, required, hint, error, children }) {
+  const id = useId()
+  const msgId = error || hint ? `${id}-msg` : undefined
+  const control = isValidElement(children)
+    ? cloneElement(children, {
+        'aria-describedby': children.props['aria-describedby'] ?? msgId,
+        'aria-invalid': children.props['aria-invalid'] ?? (error ? true : undefined),
+      })
+    : children
   return (
     <label className="field">
       <span className="label">{label}{required && <span className="req">*</span>}</span>
-      {children}
-      {error ? <span className="error-text">{error}</span> : hint && <span className="hint">{hint}</span>}
+      {control}
+      {error ? <span id={msgId} className="error-text">{error}</span> : hint && <span id={msgId} className="hint">{hint}</span>}
     </label>
   )
 }
@@ -217,7 +234,19 @@ export function DataTable({ columns, rows, rowKey, loading, empty, onRowClick, a
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r[rowKey]} className={onRowClick ? 'clickable' : ''} onClick={onRowClick ? () => onRowClick(r) : undefined}>
+              <tr
+                key={r[rowKey]}
+                className={onRowClick ? 'clickable' : ''}
+                onClick={onRowClick ? () => onRowClick(r) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (e) => {
+                  // Only when the row itself has focus, so Enter/Space on an action button keeps working.
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault()
+                    onRowClick(r)
+                  }
+                } : undefined}
+              >
                 {columns.map((c) => (
                   <td key={c.key} className={[c.className, c.hideSm && 'hide-sm'].filter(Boolean).join(' ')}>{c.render ? c.render(r) : r[c.key] ?? '—'}</td>
                 ))}
@@ -237,28 +266,67 @@ export function DataTable({ columns, rows, rowKey, loading, empty, onRowClick, a
 }
 
 // ---------------- modal ----------------
-export function Modal({ open, onClose, title, subtitle, children, footer, size }) {
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const INITIAL_FOCUS = 'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button.btn-primary:not([disabled]), button.btn-danger:not([disabled])'
+// Open modals, topmost last: only the topmost one reacts to Escape / Tab.
+const modalStack = []
+
+// labelledBy / describedBy let a dialog without a header title (ConfirmDialog) name itself from its body.
+export function Modal({ open, onClose, title, subtitle, children, footer, size, role = 'dialog', labelledBy, describedBy }) {
   const ref = useRef(null)
+  const titleId = useId()
+  const close = useEffectEvent(() => onClose())
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => e.key === 'Escape' && onClose()
+    const opener = document.activeElement
+    const token = {}
+    modalStack.push(token)
+    const onKey = (e) => {
+      const el = ref.current
+      if (!el || modalStack[modalStack.length - 1] !== token) return
+      if (e.key === 'Escape') { close(); return }
+      if (e.key !== 'Tab') return
+      // Keep Tab inside the dialog.
+      const items = [...el.querySelectorAll(FOCUSABLE)]
+      const active = document.activeElement
+      if (!items.length) { e.preventDefault(); el.focus(); return }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const outside = !el.contains(active)
+      if (e.shiftKey && (outside || active === first || active === el)) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && (outside || active === last)) { e.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const t = setTimeout(() => ref.current?.querySelector('input, select, textarea, button.btn-primary')?.focus(), 30)
+    const t = setTimeout(() => {
+      const el = ref.current
+      if (el) (el.querySelector('[data-autofocus]') ?? el.querySelector(INITIAL_FOCUS) ?? el).focus()
+    }, 30)
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
       clearTimeout(t)
+      modalStack.splice(modalStack.indexOf(token), 1)
+      // Return focus to whatever opened the dialog (if it still exists).
+      if (opener?.isConnected) opener.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
   if (!open) return null
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${size || ''}`} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      <div
+        className={`modal ${size || ''}`}
+        role={role}
+        aria-modal="true"
+        aria-labelledby={labelledBy ?? (title ? titleId : undefined)}
+        aria-describedby={describedBy}
+        tabIndex={-1}
+        ref={ref}
+      >
         <div className="modal-head">
           <div>
-            <h2 className="modal-title">{title}</h2>
+            {title && <h2 id={titleId} className="modal-title">{title}</h2>}
             {subtitle && <p className="modal-sub">{subtitle}</p>}
           </div>
           <IconButton icon="x" label="Cerrar" onClick={onClose} />
@@ -302,7 +370,7 @@ export function FormModal({ open, onClose, title, subtitle, submitLabel = 'Guard
       }
     >
       <form id="modal-form" className="form" onSubmit={submit} noValidate={false}>
-        {error && <div className="banner" style={{ background: 'var(--red-bg)', borderColor: '#f5cdd0', color: '#8a1f25' }}><Icon name="alert" size={16} />{error}</div>}
+        {error && <div className="banner error" role="alert"><Icon name="alert" size={16} /><span>{error}</span></div>}
         {children}
       </form>
     </Modal>
@@ -311,26 +379,30 @@ export function FormModal({ open, onClose, title, subtitle, submitLabel = 'Guard
 
 export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel = 'Eliminar' }) {
   const [busy, setBusy] = useState(false)
+  const id = useId()
   const go = async () => {
     setBusy(true)
     try { await onConfirm() } finally { setBusy(false) }
   }
+  // The visible heading names the dialog; Cancel gets initial focus so Enter never deletes by accident.
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title=""
+      role="alertdialog"
+      labelledBy={`${id}-title`}
+      describedBy={message ? `${id}-msg` : undefined}
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={onClose} data-autofocus>Cancelar</Button>
           <Button variant="danger" onClick={go} disabled={busy}>{busy ? 'Eliminando…' : confirmLabel}</Button>
         </>
       }
     >
-      <div className="confirm-icon"><Icon name="trash" size={20} /></div>
-      <h3 style={{ fontSize: 16, marginBottom: 6 }}>{title}</h3>
-      <p className="muted">{message}</p>
+      <div className="confirm-icon" aria-hidden="true"><Icon name="trash" size={20} /></div>
+      <h2 id={`${id}-title`} className="confirm-title">{title}</h2>
+      {message && <div id={`${id}-msg`} className="muted">{message}</div>}
     </Modal>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon, { Logo } from './icons.jsx'
 import { isDemo, onModeChange } from './api.js'
 import Dashboard from './pages/Dashboard.jsx'
@@ -49,6 +49,8 @@ export default function App() {
   const route = useRoute()
   const demo = useDemo()
   const [menuOpen, setMenuOpen] = useState(false)
+  const sidebarRef = useRef(null)
+  const menuBtnRef = useRef(null)
   const current = ROUTES.find((r) => r.page === route.page)
   const Page = current.component
 
@@ -57,13 +59,32 @@ export default function App() {
     document.title = `${current.label} · Clínica Central`
   }, [route.page, current.label])
 
+  // Mobile drawer: move focus into it on open; Escape closes it and returns focus to the menu button.
+  useEffect(() => {
+    if (!menuOpen) return
+    const t = setTimeout(() => {
+      const nav = sidebarRef.current
+      ;(nav?.querySelector('.nav-item.active') ?? nav?.querySelector('.nav-item'))?.focus()
+    }, 30)
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      menuBtnRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
   const groups = [...new Set(ROUTES.map((r) => r.group))]
   const todayRaw = new Date().toLocaleDateString('es-PR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1)
 
   return (
     <div className="app">
-      <aside className={`sidebar${menuOpen ? ' open' : ''}`} aria-label="Navegación principal">
+      <aside id="app-sidebar" ref={sidebarRef} className={`sidebar${menuOpen ? ' open' : ''}`} aria-label="Navegación principal">
         <a className="brand" href="#/panel" style={{ textDecoration: 'none', color: 'inherit' }}>
           <Logo size={34} />
           <div>
@@ -95,7 +116,15 @@ export default function App() {
 
       <div className="main">
         <header className="topbar">
-          <button type="button" className="btn btn-icon menu-btn" aria-label="Abrir menú" onClick={() => setMenuOpen(true)}>
+          <button
+            type="button"
+            ref={menuBtnRef}
+            className="btn btn-icon menu-btn"
+            aria-label="Abrir menú"
+            aria-expanded={menuOpen}
+            aria-controls="app-sidebar"
+            onClick={() => setMenuOpen(true)}
+          >
             <Icon name="menu" size={20} />
           </button>
           <div className="crumbs">

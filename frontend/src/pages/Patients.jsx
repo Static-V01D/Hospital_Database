@@ -1,10 +1,10 @@
 // Pacientes — directorio de pacientes con búsqueda, filtro rápido, ficha con historial de citas,
 // alta de pacientes y eliminación. El backend no admite edición (no hay PUT), por eso no hay botón de editar.
 // Estado de cita: Atendida (tiene consulta) · Sin registrar (pasada sin consulta) · Hoy · Programada.
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { api, dateOnly, fmtDate, fmtPhone, fmtTime, fullName, age, todayISO } from '../api.js'
 import {
-  useData, byId, useToast, Button, IconButton, Badge, Avatar, Person, PageHeader, Card,
+  useData, byId, useToast, Button, IconButton, Badge, Avatar, PageHeader, Card,
   SearchInput, Segmented, EmptyState, ErrorState, Field, DataTable, Modal, FormModal, ConfirmDialog,
 } from '../components/ui.jsx'
 
@@ -18,6 +18,9 @@ const FILTERS = [
 
 const EMPTY_FORM = { nombre: '', apellido: '', fechaNacimiento: '', telefono: '', email: '' }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Nombre del paciente como botón (abre la ficha con teclado); se ve igual que el texto .cell-main de Person.
+const NAME_BTN = { display: 'block', maxWidth: '100%', border: 0, background: 'none', padding: 0, textAlign: 'left' }
 
 // ---------- helpers ----------
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
@@ -145,7 +148,17 @@ export default function Patients({ query, navigate }) {
     setCreating(false)
     if (query.get('nuevo')) navigate('pacientes')
   }, [query, navigate])
-  const closeDetail = useCallback(() => setDetailId(null), [])
+  // Al cerrar la ficha abierta desde el botón del nombre, el foco vuelve a ese botón (no al inicio de la página).
+  const detailTrigger = useRef(null)
+  const openDetail = (p, trigger = null) => {
+    detailTrigger.current = trigger
+    setDetailId(p.idPaciente)
+  }
+  const closeDetail = useCallback(() => {
+    setDetailId(null)
+    detailTrigger.current?.focus()
+    detailTrigger.current = null
+  }, [])
   const closeDelete = useCallback(() => setDeletingId(null), [])
 
   const schedule = (p) => navigate('citas', { nueva: 1, paciente: p.idPaciente })
@@ -185,11 +198,14 @@ export default function Patients({ query, navigate }) {
       toast(`Se eliminó la ficha de ${fullName(p)}.`, 'success')
       reload()
     } catch (e) {
+      // Atribuir el fallo a las citas sólo si el servidor lo rechazó como conflicto; si no, mostrar la causa real
+      // (sin conexión, error 500…). `status` lo adjunta api.js cuando la respuesta lo trae.
       const n = stats[p.idPaciente]?.citas.length ?? 0
+      const conflict = e?.status === 409 || e?.status === 400
       toast(
-        n
+        conflict && n
           ? `No se pudo eliminar a ${fullName(p)}: tiene ${plural(n, 'cita registrada', 'citas registradas')}.`
-          : `No se pudo eliminar el paciente. ${e.message || ''}`.trim(),
+          : `No se pudo eliminar el paciente. ${e?.message || ''}`.trim(),
         'error',
       )
     } finally {
@@ -203,8 +219,25 @@ export default function Patients({ query, navigate }) {
       key: 'paciente',
       header: 'Paciente',
       render: (p) => (
-        <div style={{ maxWidth: 260 }}>
-          <Person person={p} sub={p.email || 'Sin correo registrado'} />
+        // En el teléfono se oculta el avatar y el texto se limita a 25vw (recortado con "…") para que Próxima cita
+        // y las acciones quepan sin desplazar la tabla; en escritorio 25vw supera los 260px y no recorta nada.
+        <div className="person" style={{ maxWidth: 260 }}>
+          <div className="hide-sm" style={{ flex: 'none' }}><Avatar person={p} /></div>
+          <div style={{ maxWidth: '25vw' }}>
+            <button
+              type="button"
+              className="cell-main"
+              style={NAME_BTN}
+              aria-label={`Ver ficha de ${fullName(p)}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                openDetail(p, e.currentTarget)
+              }}
+            >
+              {fullName(p)}
+            </button>
+            <div className="cell-sub">{p.email || 'Sin correo registrado'}</div>
+          </div>
         </div>
       ),
     },
@@ -226,6 +259,7 @@ export default function Patients({ query, navigate }) {
     {
       key: 'telefono',
       header: 'Teléfono',
+      hideSm: true, // en el teléfono el número sigue en la ficha; así las acciones caben sin desplazar la tabla
       className: 'num',
       render: (p) => <span style={{ whiteSpace: 'nowrap' }}>{showPhone(p.telefono)}</span>,
     },
@@ -247,10 +281,14 @@ export default function Patients({ query, navigate }) {
       header: 'Próxima cita',
       render: (p) => {
         const c = stats[p.idPaciente]?.proxima
-        if (!c) return <span className="muted">Sin citas próximas</span>
+        // "Ninguna" (bajo el encabezado "Próxima cita") en vez de una frase larga que ensancha la columna en el teléfono.
+        if (!c) return <span className="muted">Ninguna</span>
+        const d = dateOnly(c.fecha)
+        // Año sólo si no es el actual (como en el historial): columna más angosta, más espacio para el nombre.
+        const label = d === today ? 'Hoy' : fmtDate(c.fecha, d.slice(0, 4) === today.slice(0, 4) ? { day: 'numeric', month: 'short' } : undefined)
         return (
           <div>
-            <div className="cell-main" style={{ whiteSpace: 'nowrap' }}>{dateOnly(c.fecha) === today ? 'Hoy' : fmtDate(c.fecha)}</div>
+            <div className="cell-main" style={{ whiteSpace: 'nowrap' }}>{label}</div>
             <div className="cell-sub num" style={{ whiteSpace: 'nowrap' }}>{fmtTime(c.hora)}</div>
           </div>
         )
@@ -318,7 +356,7 @@ export default function Patients({ query, navigate }) {
                 rowKey="idPaciente"
                 loading={firstLoad}
                 empty={emptyState}
-                onRowClick={(p) => setDetailId(p.idPaciente)}
+                onRowClick={(p) => openDetail(p)}
                 actions={(p) => (
                   <>
                     <IconButton icon="calendar" label="Agendar cita" onClick={() => schedule(p)} />
@@ -439,7 +477,8 @@ export default function Patients({ query, navigate }) {
         )}
       </Modal>
 
-      {/* Registrar paciente */}
+      {/* Registrar paciente — sin restricciones nativas (required, type="email", min/max): el navegador bloquearía
+          el envío con su propio aviso y validate() no mostraría los mensajes en español junto a cada campo. */}
       <FormModal
         open={creating}
         onClose={closeCreate}
@@ -457,7 +496,8 @@ export default function Patients({ query, navigate }) {
               placeholder="Ej. María"
               autoComplete="given-name"
               maxLength={50}
-              required
+              aria-required="true"
+              aria-invalid={!!errors.nombre}
             />
           </Field>
           <Field label="Apellido" required error={errors.apellido}>
@@ -468,7 +508,8 @@ export default function Patients({ query, navigate }) {
               placeholder="Ej. Rivera Ortiz"
               autoComplete="family-name"
               maxLength={50}
-              required
+              aria-required="true"
+              aria-invalid={!!errors.apellido}
             />
           </Field>
         </div>
@@ -479,8 +520,7 @@ export default function Patients({ query, navigate }) {
               className={`input${errors.fechaNacimiento ? ' invalid' : ''}`}
               value={form.fechaNacimiento}
               onChange={setField('fechaNacimiento')}
-              min="1900-01-01"
-              max={today}
+              aria-invalid={!!errors.fechaNacimiento}
             />
           </Field>
           <Field label="Teléfono" required hint="10 dígitos" error={errors.telefono}>
@@ -493,20 +533,26 @@ export default function Patients({ query, navigate }) {
               placeholder="(787) 555-1234"
               autoComplete="tel-national"
               maxLength={20}
-              required
+              aria-required="true"
+              aria-invalid={!!errors.telefono}
             />
           </Field>
         </div>
         <Field label="Correo electrónico" required error={errors.email}>
           <input
-            type="email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             className={`input${errors.email ? ' invalid' : ''}`}
             value={form.email}
             onChange={setField('email')}
             placeholder="nombre@correo.com"
             autoComplete="email"
             maxLength={100}
-            required
+            aria-required="true"
+            aria-invalid={!!errors.email}
           />
         </Field>
       </FormModal>

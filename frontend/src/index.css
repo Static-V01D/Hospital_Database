@@ -149,6 +149,8 @@ button { cursor: pointer; }
 }
 .banner svg { flex: none; color: var(--amber); }
 .banner code { font-size: 12px; background: rgba(255,255,255,.6); padding: 1px 5px; border-radius: 4px; }
+.banner.error { background: var(--red-bg); border-color: #f5cdd0; color: #8a1f25; align-items: flex-start; }
+.banner.error svg { color: var(--red); margin-top: 1px; }
 
 /* ---------------- card ---------------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
@@ -243,6 +245,7 @@ button { cursor: pointer; }
 .table tbody tr { transition: background .1s; }
 .table tbody tr:hover { background: #fafcfd; }
 .table tr.clickable { cursor: pointer; }
+.table tr.clickable:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; background: var(--brand-50); }
 .table .actions { width: 1%; white-space: nowrap; text-align: right; }
 .table .actions-inner { display: inline-flex; gap: 2px; opacity: .65; transition: opacity .12s; }
 .table tr:hover .actions-inner { opacity: 1; }
@@ -333,6 +336,8 @@ button { cursor: pointer; }
 .modal-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .modal-body { padding: 20px 24px; overflow-y: auto; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--line-2); background: var(--surface-2); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+.modal:focus { outline: none; }
+.confirm-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .confirm-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--red-bg); color: var(--red); margin-bottom: 14px; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
@@ -343,16 +348,22 @@ button { cursor: pointer; }
 .dl dd { margin: 0; font-weight: 500; }
 
 /* ---------------- toast ---------------- */
-.toasts { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 10px; }
+.toasts { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; max-width: calc(100vw - 40px); }
+.toast-stack { display: flex; flex-direction: column; gap: 10px; }
+.toast-stack:not(:empty) ~ .toast-stack:not(:empty) { margin-top: 10px; }
 .toast {
   display: flex; align-items: center; gap: 10px; min-width: 280px; max-width: 400px;
-  padding: 12px 14px; border-radius: var(--r);
+  padding: 10px 8px 10px 14px; border-radius: var(--r);
   background: var(--ink); color: #fff; box-shadow: var(--shadow-lg);
   font-size: 13.5px; font-weight: 500;
   animation: pop .2s ease;
 }
 .toast .ti { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--green); }
 .toast.error .ti { background: var(--red); }
+.toast-msg { flex: 1; min-width: 0; }
+.toast .btn-icon { width: 28px; height: 28px; flex: none; align-self: flex-start; color: rgba(255,255,255,.65); }
+.toast .btn-icon:hover { background: rgba(255,255,255,.12); color: #fff; }
+.toast .btn-icon:focus-visible { outline-color: #fff; outline-offset: 0; }
 
 /* ---------------- responsive ---------------- */
 @media (max-width: 1100px) {
@@ -361,8 +372,9 @@ button { cursor: pointer; }
 }
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; left: 0; top: 0; width: var(--sidebar-w); transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-lg); }
-  .sidebar.open { transform: none; }
+  /* visibility keeps the closed drawer out of the tab order; its delay lets the slide-out finish first */
+  .sidebar { position: fixed; left: 0; top: 0; width: var(--sidebar-w); transform: translateX(-100%); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s; box-shadow: var(--shadow-lg); }
+  .sidebar.open { transform: none; visibility: visible; transition: transform .2s ease, visibility 0s; }
   .scrim { position: fixed; inset: 0; background: rgba(14,26,43,.35); z-index: 25; }
   .btn.menu-btn { display: inline-flex; }
   .topbar { padding: 0 16px; }

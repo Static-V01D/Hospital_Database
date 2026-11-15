@@ -1,7 +1,7 @@
 // Especialidades — áreas clínicas de la clínica.
 // Cuadrícula de tarjetas con los médicos asignados y la actividad de citas de cada área;
 // crear / renombrar (FormModal) y eliminar (ConfirmDialog, solo si no tiene médicos).
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useRef, useState } from 'react'
 import Icon from '../icons.jsx'
 import { api, dateOnly, fullName, todayISO } from '../api.js'
 import {
@@ -17,7 +17,6 @@ import {
   IconButton,
   PageHeader,
   SearchInput,
-  Segmented,
   useData,
   useToast,
 } from '../components/ui.jsx'
@@ -25,9 +24,9 @@ import {
 const MAX_AVATARS = 4
 const NAME_MAX = 100 // VARCHAR(100) en la base de datos
 const SORTS = [
-  { value: 'nombre', label: 'A–Z' },
-  { value: 'medicos', label: 'Médicos' },
-  { value: 'citas', label: 'Citas' },
+  { value: 'nombre', label: 'Nombre' },
+  { value: 'medicos', label: 'Más médicos' },
+  { value: 'citas', label: 'Más citas' },
 ]
 
 // Comparación sin mayúsculas, acentos ni espacios repetidos ("cardiologia" == "Cardiología").
@@ -175,10 +174,11 @@ export default function Specialties({ query, navigate }) {
           <SpecialtyCard
             key={e.idEspecialidad}
             spec={e}
-            onDoctors={() => navigate('doctores')}
-            onAddDoctor={() => navigate('doctores', { nueva: '1' })}
+            onDoctors={() => navigate('doctores', { especialidad: e.idEspecialidad })}
+            onAddDoctor={() => navigate('doctores', { nueva: '1', especialidad: e.idEspecialidad })}
             onEdit={() => openEdit(e)}
             onDelete={() => setDeleting(e)}
+            onBlockedDelete={() => toast(`Reasigne o elimine los médicos de “${e.nombre}” antes de eliminarla.`, 'error')}
           />
         ))}
       </div>
@@ -206,7 +206,7 @@ export default function Specialties({ query, navigate }) {
                     : `${plural(rows.length, 'especialidad', 'especialidades')} · ${plural(doctorCount, 'médico', 'médicos')}`}
                 </span>
               )}
-              <Segmented options={SORTS} value={sort} onChange={setSort} />
+              <SortControl options={SORTS} value={sort} onChange={setSort} />
             </div>
           </div>
         )}
@@ -250,9 +250,10 @@ export default function Specialties({ query, navigate }) {
 }
 
 // ---------- piezas de la tarjeta ----------
-function SpecialtyCard({ spec, onDoctors, onAddDoctor, onEdit, onDelete }) {
+function SpecialtyCard({ spec, onDoctors, onAddDoctor, onEdit, onDelete, onBlockedDelete }) {
   const n = spec.doctors.length
   const blocked = n > 0
+  const reasonId = useId()
   return (
     <article className="card" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-body stack" style={{ flex: 1, gap: 16, paddingTop: 20 }}>
@@ -261,7 +262,7 @@ function SpecialtyCard({ spec, onDoctors, onAddDoctor, onEdit, onDelete }) {
           <div style={{ minWidth: 0, flex: 1 }}>
             <h2 className="card-title" style={{ overflowWrap: 'anywhere' }}>{spec.nombre}</h2>
             <p className="card-sub">
-              <button type="button" className="link-btn" style={{ fontSize: 'inherit' }} onClick={onDoctors} title="Ver médicos">
+              <button type="button" className="link-btn" style={{ fontSize: 'inherit' }} onClick={onDoctors} title={`Ver médicos de ${spec.nombre}`}>
                 {plural(n, 'médico', 'médicos')}
               </button>
               <span aria-hidden="true"> · </span>
@@ -281,15 +282,66 @@ function SpecialtyCard({ spec, onDoctors, onAddDoctor, onEdit, onDelete }) {
         <div className="row" style={{ gap: 2 }}>
           <IconButton icon="edit" label={`Editar ${spec.nombre}`} onClick={onEdit} />
           {blocked ? (
-            <span title="Reasigne o elimine los médicos primero" style={{ display: 'inline-flex' }}>
-              <IconButton icon="trash" label={`Eliminar ${spec.nombre}`} title="Reasigne o elimine los médicos primero" disabled />
-            </span>
+            // aria-disabled (no `disabled`): sigue siendo enfocable y anuncia el motivo; al pulsarlo se explica con un aviso.
+            <>
+              <IconButton
+                icon="trash"
+                label={`Eliminar ${spec.nombre}`}
+                title="Reasigne o elimine los médicos primero"
+                aria-disabled="true"
+                aria-describedby={reasonId}
+                onClick={onBlockedDelete}
+                style={{ opacity: 0.55, cursor: 'not-allowed' }}
+              />
+              <span id={reasonId} className="sr-only">
+                No disponible: reasigne o elimine {plural(n, 'el médico', 'los médicos')} de esta especialidad primero.
+              </span>
+            </>
           ) : (
             <IconButton icon="trash" label={`Eliminar ${spec.nombre}`} danger onClick={onDelete} />
           )}
         </div>
       </footer>
     </article>
+  )
+}
+
+// Orden de la cuadrícula: grupo de opciones (radiogroup) con etiqueta visible y flechas del teclado.
+// Reutiliza el estilo .segmented; no es un filtro ni pestañas.
+function SortControl({ options, value, onChange }) {
+  const labelId = useId()
+  const refs = useRef([])
+  const current = Math.max(0, options.findIndex((o) => o.value === value))
+  const onKeyDown = (ev) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key]
+    let next = step == null ? null : (current + step + options.length) % options.length
+    if (ev.key === 'Home') next = 0
+    if (ev.key === 'End') next = options.length - 1
+    if (next == null) return
+    ev.preventDefault()
+    onChange(options[next].value)
+    refs.current[next]?.focus()
+  }
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+      <span id={labelId} className="muted" style={{ fontSize: 13 }}>Ordenar por</span>
+      <div className="segmented" role="radiogroup" aria-labelledby={labelId} onKeyDown={onKeyDown}>
+        {options.map((o, i) => (
+          <button
+            key={o.value}
+            ref={(el) => { refs.current[i] = el }}
+            type="button"
+            role="radio"
+            aria-checked={i === current}
+            tabIndex={i === current ? 0 : -1}
+            className={i === current ? 'on' : ''}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

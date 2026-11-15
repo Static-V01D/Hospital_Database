@@ -95,6 +95,10 @@ function whenLabel(cita, now) {
 const lastLabel = (cita, now) =>
   dateOnly(cita.fecha) === now.date ? `hoy, ${fmtTime(cita.hora)}` : fmtDate(cita.fecha)
 
+// FK / reference conflict from the API (409, SQL "REFERENCE constraint", EF "saving the entity changes").
+const CONFLICT_RE = /\b409\b|conflict|conflicto|reference|foreign key|\bFK|constraint|entity changes/i
+const isConflictError = (e) => CONFLICT_RE.test(e?.message || '')
+
 const opensFromQuery = (query) => query.get('nuevo') === '1' || query.get('nueva') === '1'
 const blankForm = (idEspecialidad = '') => ({ id: null, label: '', nombre: '', apellido: '', idEspecialidad: idEspecialidad || '' })
 const BLANK = blankForm()
@@ -216,6 +220,18 @@ export default function Doctors({ query, navigate }) {
   const [errors, setErrors] = useState({})
   const [deleting, setDeleting] = useState(null)
 
+  // App keys pages by route.page only, so this page stays mounted when just the query changes
+  // (browser Back to ?nueva=1, a link to ?especialidad=2). Re-sync from the new query during render.
+  const [seenQuery, setSeenQuery] = useState(query)
+  if (query !== seenQuery) {
+    setSeenQuery(query)
+    setSpec(query.get('especialidad') || 'all')
+    if (opensFromQuery(query)) {
+      setErrors({})
+      setEditor(blankForm(query.get('especialidad')))
+    }
+  }
+
   const { doctores, especialidades, citas, pacientes } = useMemo(() => ({
     doctores: data.doctores || [],
     especialidades: data.especialidades || [],
@@ -255,8 +271,9 @@ export default function Doctors({ query, navigate }) {
   // ----- actions -----
   const closeEditor = useCallback(() => {
     setEditor(null)
-    if (opensFromQuery(query)) navigate('doctores')
-  }, [query, navigate])
+    // Drop ?nueva=1 from the URL but keep the active specialty filter (the query sync would reset it).
+    if (opensFromQuery(query)) navigate('doctores', activeSpec !== 'all' ? { especialidad: activeSpec } : undefined)
+  }, [query, navigate, activeSpec])
   const closeDelete = useCallback(() => setDeleting(null), [])
 
   const openCreate = (presetSpec) => {
@@ -271,7 +288,8 @@ export default function Doctors({ query, navigate }) {
       label: fullName(d),
       nombre: d.nombre ?? '',
       apellido: d.apellido ?? '',
-      idEspecialidad: d.idEspecialidad != null ? String(d.idEspecialidad) : '',
+      // A deleted specialty has no matching <option>; leave it empty so the placeholder shows.
+      idEspecialidad: d.idEspecialidad != null && specById[d.idEspecialidad] ? String(d.idEspecialidad) : '',
     })
   }
   const setField = (key) => (e) => {
@@ -313,16 +331,17 @@ export default function Doctors({ query, navigate }) {
   const confirmDelete = async () => {
     const d = deleting
     if (!d) return
-    const { total } = stats[d.idDoctor] || EMPTY_STATS
     try {
       await api.remove('doctores', d.idDoctor)
       toast(`${fullName(d)} se eliminó del cuerpo médico`, 'success')
       reload()
     } catch (e) {
+      // Only blame linked citas when the server actually reports a reference conflict;
+      // network drops, 404s and other 5xx keep their own message.
       toast(
-        total
+        isConflictError(e)
           ? `No se pudo eliminar a ${fullName(d)}: tiene citas asociadas. Reasígnelas o elimínelas primero.`
-          : e.message || 'No se pudo eliminar al médico',
+          : e?.message || 'No se pudo eliminar al médico',
         'error',
       )
     } finally {
@@ -389,7 +408,7 @@ export default function Doctors({ query, navigate }) {
               stats={s}
               patient={s.next ? patientById[s.next.idPaciente] : null}
               now={now}
-              onViewCitas={() => navigate('citas')}
+              onViewCitas={() => navigate('citas', { doctor: d.idDoctor })}
               onEdit={() => openEdit(d)}
               onDelete={() => setDeleting(d)}
             />
@@ -440,7 +459,14 @@ export default function Doctors({ query, navigate }) {
             )}
             <span className="spacer" />
             {doctores.length > 0 && (
-              <span className="muted num hide-sm" style={{ fontSize: 13 }}>{countLabel}</span>
+              // Hidden on phones only when unfiltered; while filtering it is the only sign results are narrowed.
+              <span
+                className={`muted num${visible.length === doctores.length ? ' hide-sm' : ''}`}
+                style={{ fontSize: 13 }}
+                aria-live="polite"
+              >
+                {countLabel}
+              </span>
             )}
           </div>
         </div>
@@ -470,7 +496,7 @@ export default function Doctors({ query, navigate }) {
             <input
               className={`input${errors.nombre ? ' invalid' : ''}`}
               type="text"
-              required
+              aria-required="true"
               maxLength={NAME_MAX}
               autoComplete="off"
               placeholder="Ej. Carlos"
@@ -483,7 +509,7 @@ export default function Doctors({ query, navigate }) {
             <input
               className={`input${errors.apellido ? ' invalid' : ''}`}
               type="text"
-              required
+              aria-required="true"
               maxLength={NAME_MAX}
               autoComplete="off"
               placeholder="Ej. Rodríguez"
@@ -501,7 +527,7 @@ export default function Doctors({ query, navigate }) {
         >
           <select
             className={`select${errors.idEspecialidad ? ' invalid' : ''}`}
-            required
+            aria-required="true"
             disabled={noSpecs}
             value={form.idEspecialidad}
             onChange={setField('idEspecialidad')}

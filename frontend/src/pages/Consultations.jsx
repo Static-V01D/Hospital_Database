@@ -11,7 +11,7 @@ import { useCallback, useMemo, useState } from 'react'
 import Icon from '../icons.jsx'
 import { api, age, dateOnly, fmtDate, fmtTime, fullName, todayISO } from '../api.js'
 import {
-  useData, byId, useToast, Button, IconButton, Badge, Person, PageHeader, Card,
+  useData, byId, useToast, Button, IconButton, Person, PageHeader, Card,
   SearchInput, EmptyState, ErrorState, Field, DataTable, Modal, FormModal, ConfirmDialog,
 } from '../components/ui.jsx'
 
@@ -80,18 +80,17 @@ export default function Consultations({ query, navigate }) {
     return rows.filter((r) => terms.every((t) => r.haystack.includes(t)))
   }, [rows, search])
 
-  // Citas that can still receive a consulta: past/today first (most recent first), then upcoming (soonest first).
+  // Citas that can receive a consulta: no consulta yet and dated today or earlier (most recent first).
+  // Future citas have not been attended, so they are counted but never offered.
   const citaOptions = useMemo(() => {
     const taken = new Set((data.consultas ?? []).map((c) => c.idCita))
     const today = todayISO()
     const free = (data.citas ?? []).filter((c) => !taken.has(c.idCita))
-    const toOption = (c) => ({ value: String(c.idCita), label: citaLabel(c, maps) })
     const pending = free.filter((c) => dateOnly(c.fecha) <= today)
-      .sort((a, b) => sortKey(b).localeCompare(sortKey(a))).map(toOption)
-    const upcoming = free.filter((c) => dateOnly(c.fecha) > today)
-      .sort((a, b) => sortKey(a).localeCompare(sortKey(b))).map(toOption)
-    const overdue = free.filter((c) => dateOnly(c.fecha) < today).length
-    return { pending, upcoming, overdue, taken, ids: new Set(free.map((c) => String(c.idCita))) }
+      .sort((a, b) => sortKey(b).localeCompare(sortKey(a)))
+      .map((c) => ({ value: String(c.idCita), label: citaLabel(c, maps) }))
+    const upcoming = free.length - pending.length
+    return { pending, upcoming, taken, ids: new Set(pending.map((o) => o.value)) }
   }, [data.consultas, data.citas, maps])
 
   const detail = useMemo(() => {
@@ -100,9 +99,10 @@ export default function Consultations({ query, navigate }) {
   }, [viewing, rows])
 
   // ---------- open / close (stable callbacks: Modal re-runs its focus effect when onClose changes) ----------
+  // replaceState (not navigate) so Cancel/Close does not leave a "?nueva=1" entry for Back to land on.
   const clearQuery = useCallback(() => {
-    if (query.toString()) navigate('consultas')
-  }, [query, navigate])
+    if (window.location.hash.includes('?')) window.history.replaceState(window.history.state, '', '#/consultas')
+  }, [])
   const closeForm = useCallback(() => { setForm(null); clearQuery() }, [clearQuery])
   const closeDetail = useCallback(() => { setViewing(null); clearQuery() }, [clearQuery])
   const closeDelete = useCallback(() => setDeleting(null), [])
@@ -137,12 +137,16 @@ export default function Consultations({ query, navigate }) {
   const noCitas = ready && !isEdit && citaOptions.ids.size === 0
   const selectedTaken = Boolean(form && !isEdit && ready && form.idCita &&
     !citaOptions.ids.has(form.idCita) && citaOptions.taken.has(Number(form.idCita)))
+  const selectedCita = form && !isEdit && ready && form.idCita ? maps.citas[Number(form.idCita)] : undefined
+  const selectedFuture = Boolean(selectedCita && !selectedTaken && dateOnly(selectedCita.fecha) > todayISO())
 
   const submit = async () => {
-    if (noCitas) throw new Error('No hay citas pendientes de registro. Programe una cita primero.')
     const errs = {}
     if (!isEdit && !citaOptions.ids.has(form.idCita)) {
-      errs.idCita = citaOptions.taken.has(Number(form.idCita)) ? 'Esta cita ya tiene una consulta registrada.' : 'Seleccione la cita atendida.'
+      const cita = maps.citas[Number(form.idCita)]
+      errs.idCita = citaOptions.taken.has(Number(form.idCita)) ? 'Esta cita ya tiene una consulta registrada.'
+        : cita && dateOnly(cita.fecha) > todayISO() ? 'Solo puede registrar consultas de citas ya atendidas.'
+          : 'Seleccione la cita atendida.'
     }
     if (!form.diagnostico.trim()) errs.diagnostico = 'Escriba el diagnóstico.'
     if (!form.observaciones.trim()) errs.observaciones = 'Escriba las observaciones. Si no aplica, indique «Ninguna».'
@@ -158,8 +162,8 @@ export default function Consultations({ query, navigate }) {
       if (isEdit) await api.update('consultas', form.idConsulta, { idConsulta: form.idConsulta, ...body })
       else await api.create('consultas', body)
     } catch (e) {
-      toast(`No se pudo guardar la consulta: ${e.message}`, 'error')
-      throw e
+      // FormModal shows this in its banner; no toast, so the error appears once.
+      throw new Error(`No se pudo guardar la consulta: ${e.message}`)
     }
     toast(isEdit ? 'Cambios guardados' : 'Consulta registrada', 'success')
     closeForm()
@@ -250,10 +254,12 @@ export default function Consultations({ query, navigate }) {
             <div className="toolbar">
               <SearchInput value={search} onChange={setSearch} placeholder="Paciente, médico, diagnóstico…" />
               <span className="spacer hide-sm" />
-              {ready && citaOptions.overdue > 0 && (
-                <Badge tone="amber" dot>
-                  {citaOptions.overdue} {citaOptions.overdue === 1 ? 'cita sin registrar' : 'citas sin registrar'}
-                </Badge>
+              {ready && citaOptions.pending.length > 0 && (
+                <button type="button" className="badge amber" style={{ border: 0 }} onClick={openCreate} title="Registrar una consulta">
+                  <span className="dot" />
+                  {citaOptions.pending.length} {citaOptions.pending.length === 1 ? 'cita pendiente de registro' : 'citas pendientes de registro'}
+                  <Icon name="arrowRight" size={12} />
+                </button>
               )}
               {ready && <span className="muted num">{countLabel}</span>}
             </div>
@@ -265,10 +271,13 @@ export default function Consultations({ query, navigate }) {
               empty={emptyState}
               onRowClick={(r) => setViewing({ idConsulta: r.idConsulta })}
               actions={(r) => (
-                <span className="row hide-sm" style={{ gap: 2 }}>
-                  <IconButton icon="edit" label="Editar consulta" onClick={() => openEdit(r)} />
-                  <IconButton icon="trash" label="Eliminar consulta" danger onClick={() => askDelete(r)} />
-                </span>
+                <>
+                  <span className="row hide-sm" style={{ gap: 2 }}>
+                    <IconButton icon="edit" label="Editar consulta" onClick={() => openEdit(r)} />
+                    <IconButton icon="trash" label="Eliminar consulta" danger onClick={() => askDelete(r)} />
+                  </span>
+                  <IconButton icon="chevronRight" label="Ver detalle" onClick={() => setViewing({ idConsulta: r.idConsulta })} />
+                </>
               )}
               footer={
                 <>
@@ -327,9 +336,31 @@ export default function Consultations({ query, navigate }) {
         )}
       </Modal>
 
+      {/* ---------- create: nothing to register ---------- */}
+      <Modal
+        open={Boolean(form) && noCitas}
+        onClose={closeForm}
+        title="Registrar consulta"
+        subtitle="Documente el resultado de una cita atendida."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeForm}>Cancelar</Button>
+            <Button variant="primary" icon="calendar" onClick={() => navigate('citas', { nueva: 1 })}>Programar cita</Button>
+          </>
+        }
+      >
+        <EmptyState
+          icon="calendar"
+          title="No hay citas pendientes de registro"
+          text={citaOptions.upcoming > 0
+            ? `Las citas de hoy y anteriores ya tienen consulta. ${citaOptions.upcoming === 1 ? 'La próxima cita podrá registrarse' : `Las ${citaOptions.upcoming} próximas citas podrán registrarse`} una vez atendida${citaOptions.upcoming === 1 ? '' : 's'}.`
+            : 'Todas las citas ya tienen una consulta. Programe una cita para poder registrar su resultado.'}
+        />
+      </Modal>
+
       {/* ---------- create / edit ---------- */}
       <FormModal
-        open={Boolean(form)}
+        open={Boolean(form) && !noCitas}
         onClose={closeForm}
         title={isEdit ? 'Editar consulta' : 'Registrar consulta'}
         subtitle={isEdit ? 'Actualice el diagnóstico o las observaciones.' : 'Documente el resultado de una cita atendida.'}
@@ -350,17 +381,6 @@ export default function Consultations({ query, navigate }) {
                   <option value="">Cargando citas…</option>
                 </select>
               </Field>
-            ) : noCitas ? (
-              <EmptyState
-                icon="calendar"
-                title="No hay citas pendientes de registro"
-                text="Todas las citas ya tienen una consulta. Programe una cita para poder registrar su resultado."
-                action={
-                  <button type="button" className="link-btn" onClick={() => navigate('citas', { nueva: 1 })}>
-                    Programar una cita <Icon name="arrowRight" size={14} />
-                  </button>
-                }
-              />
             ) : (
               <>
                 {selectedTaken && (
@@ -377,7 +397,15 @@ export default function Consultations({ query, navigate }) {
                     </button>
                   </div>
                 )}
-                <Field label="Cita" required error={errors.idCita} hint="Solo se muestran citas sin consulta registrada.">
+                {selectedFuture && (
+                  <div className="banner" role="note">
+                    <Icon name="info" size={16} />
+                    <span>
+                      La cita indicada es del {fmtDate(selectedCita.fecha)} y aún no se ha atendido. Podrá registrar su consulta ese día.
+                    </span>
+                  </div>
+                )}
+                <Field label="Cita" required error={errors.idCita} hint="Solo se muestran citas de hoy o anteriores sin consulta registrada.">
                   <select
                     className={`select${errors.idCita ? ' invalid' : ''}`}
                     value={citaOptions.ids.has(form.idCita) ? form.idCita : ''}
@@ -386,53 +414,42 @@ export default function Consultations({ query, navigate }) {
                     required
                   >
                     <option value="">Seleccione una cita…</option>
-                    {citaOptions.pending.length > 0 && (
-                      <optgroup label={`Pendientes de registro (${citaOptions.pending.length})`}>
-                        {citaOptions.pending.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </optgroup>
-                    )}
-                    {citaOptions.upcoming.length > 0 && (
-                      <optgroup label={`Próximas citas (${citaOptions.upcoming.length})`}>
-                        {citaOptions.upcoming.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </optgroup>
-                    )}
+                    <optgroup label={`Pendientes de registro (${citaOptions.pending.length})`}>
+                      {citaOptions.pending.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </optgroup>
                   </select>
                 </Field>
               </>
             )}
 
-            {!noCitas && (
-              <>
-                <Field label="Diagnóstico" required error={errors.diagnostico}>
-                  <input
-                    className={`input${errors.diagnostico ? ' invalid' : ''}`}
-                    value={form.diagnostico}
-                    onChange={setField('diagnostico')}
-                    placeholder="Ej.: Hipertensión arterial controlada"
-                    maxLength={200}
-                    aria-invalid={Boolean(errors.diagnostico)}
-                    autoFocus={isEdit}
-                    required
-                  />
-                </Field>
-                <Field
-                  label="Observaciones"
-                  required
-                  error={errors.observaciones}
-                  hint="Tratamiento, indicaciones o seguimiento. Si no aplica, escriba «Ninguna»."
-                >
-                  <textarea
-                    className={`textarea${errors.observaciones ? ' invalid' : ''}`}
-                    value={form.observaciones}
-                    onChange={setField('observaciones')}
-                    placeholder="Ej.: Continuar tratamiento por 30 días y regresar a seguimiento."
-                    rows={5}
-                    aria-invalid={Boolean(errors.observaciones)}
-                    required
-                  />
-                </Field>
-              </>
-            )}
+            <Field label="Diagnóstico" required error={errors.diagnostico}>
+              <input
+                className={`input${errors.diagnostico ? ' invalid' : ''}`}
+                value={form.diagnostico}
+                onChange={setField('diagnostico')}
+                placeholder="Ej.: Hipertensión arterial controlada"
+                maxLength={200}
+                aria-invalid={Boolean(errors.diagnostico)}
+                autoFocus={isEdit}
+                required
+              />
+            </Field>
+            <Field
+              label="Observaciones"
+              required
+              error={errors.observaciones}
+              hint="Tratamiento, indicaciones o seguimiento. Si no aplica, escriba «Ninguna»."
+            >
+              <textarea
+                className={`textarea${errors.observaciones ? ' invalid' : ''}`}
+                value={form.observaciones}
+                onChange={setField('observaciones')}
+                placeholder="Ej.: Continuar tratamiento por 30 días y regresar a seguimiento."
+                rows={5}
+                aria-invalid={Boolean(errors.observaciones)}
+                required
+              />
+            </Field>
           </>
         )}
       </FormModal>

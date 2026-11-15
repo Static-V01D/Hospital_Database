@@ -1,7 +1,7 @@
 // Panel general — daily overview for the front desk: key counts, today's agenda
 // (or the next appointments when today is free), workload per specialty and the
 // latest recorded consultations. Read-only page; all joins are done client-side.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Icon from '../icons.jsx'
 import { Badge, Button, Card, EmptyState, ErrorState, PageHeader, Person, StatCard, byId, useData } from '../components/ui.jsx'
 import { dateOnly, fmtDate, fmtTime, fullName, todayISO } from '../api.js'
@@ -53,9 +53,9 @@ function shortDate(iso, today) {
 }
 
 // ---------------- small presentational pieces ----------------
-function LinkAction({ children, onClick }) {
+function LinkAction({ children, onClick, label }) {
   return (
-    <button type="button" className="link-btn" onClick={onClick}>
+    <button type="button" className="link-btn" onClick={onClick} aria-label={label}>
       {children}
       <Icon name="arrowRight" size={14} />
     </button>
@@ -144,9 +144,29 @@ const footSkeleton = <span className="skeleton" style={{ display: 'block', width
 // ---------------- page ----------------
 export default function Dashboard({ navigate }) {
   const { data, loading, error, reload } = useData(RESOURCES)
-  // Fixed for the life of the page so render stays pure.
-  const [clock] = useState(() => ({ today: todayISO(), hour: new Date().getHours() }))
+  // Kept in state so render stays pure. It is refreshed every minute and when
+  // the tab regains focus, so a screen left open overnight rolls over to the
+  // new day and the greeting follows the time of day.
+  const [clock, setClock] = useState(() => ({ today: todayISO(), hour: new Date().getHours() }))
   const { today } = clock
+
+  useEffect(() => {
+    const tick = () => {
+      const next = { today: todayISO(), hour: new Date().getHours() }
+      setClock((prev) => (prev.today === next.today && prev.hour === next.hour ? prev : next))
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    const id = setInterval(tick, 60_000)
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
 
   const view = useMemo(() => {
     const citas = data.citas ?? []
@@ -410,7 +430,7 @@ export default function Dashboard({ navigate }) {
           foot={loading ? footSkeleton : view.totalPacientes ? plural(view.activePatients, 'con cita activa', 'con citas activas') : 'Sin pacientes registrados'}
         />
         <StatCard
-          label="Médicos activos"
+          label="Médicos registrados"
           icon="stethoscope"
           tone="violet"
           loading={loading}
@@ -420,7 +440,7 @@ export default function Dashboard({ navigate }) {
       </section>
 
       <div className="grid grid-main">
-        <Card title="Agenda de hoy" subtitle={longToday} action={<LinkAction onClick={() => navigate('citas')}>Ver todas</LinkAction>}>
+        <Card title="Agenda de hoy" subtitle={longToday} action={<LinkAction onClick={() => navigate('citas')} label="Ver todas las citas">Ver todas</LinkAction>}>
           {agenda}
         </Card>
 
@@ -428,14 +448,14 @@ export default function Dashboard({ navigate }) {
           <Card
             title="Carga por especialidad"
             subtitle="Citas asignadas según el área del médico"
-            action={<LinkAction onClick={() => navigate('especialidades')}>Ver todas</LinkAction>}
+            action={<LinkAction onClick={() => navigate('especialidades')} label="Ver todas las especialidades">Ver todas</LinkAction>}
           >
             {workload}
           </Card>
           <Card
             title="Consultas recientes"
             subtitle="Últimos diagnósticos registrados"
-            action={<LinkAction onClick={() => navigate('consultas')}>Ver todas</LinkAction>}
+            action={<LinkAction onClick={() => navigate('consultas')} label="Ver todas las consultas">Ver todas</LinkAction>}
           >
             {recent}
           </Card>

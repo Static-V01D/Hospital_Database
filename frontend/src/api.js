@@ -23,11 +23,11 @@ const setDemo = (v) => {
 }
 
 // ---------- demo data ----------
-const today = new Date()
+// Built from local date parts (not toISOString, which is UTC) so "today" matches todayISO().
 const day = (offset) => {
-  const d = new Date(today)
+  const d = new Date()
   d.setDate(d.getDate() + offset)
-  return d.toISOString().slice(0, 10) + 'T00:00:00'
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`
 }
 const demo = {
   especialidades: [
