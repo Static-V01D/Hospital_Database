@@ -127,3 +127,7 @@ static string BuildConnectionString(IConfiguration config)
 
     return csb.ConnectionString;
 }
+
+// Permite que el proyecto de pruebas arranque la API en memoria
+// (WebApplicationFactory<Program>).
+public partial class Program { }

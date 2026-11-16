@@ -5,10 +5,16 @@ namespace HospitalAPI.Data
 {
     public class ApplicationDbContext : DbContext
     {
+        // Esquema de Postgres donde viven las tablas. Vacío = el esquema por
+        // defecto de la conexión ("public"). Las pruebas automatizadas usan
+        // "test" (configuración Database:Schema) para no tocar los datos reales.
+        private readonly string? _schema;
+
         // Constructor
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IConfiguration? configuration = null)
             : base(options)
         {
+            _schema = configuration?["Database:Schema"];
         }
 
         // ============================================
@@ -28,6 +34,9 @@ namespace HospitalAPI.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            if (!string.IsNullOrWhiteSpace(_schema))
+                modelBuilder.HasDefaultSchema(_schema);
 
             // Relación 1:1 entre Cita y Consulta
             modelBuilder.Entity<Cita>()

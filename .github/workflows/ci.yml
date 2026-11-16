@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Una sola ejecución por rama; un push nuevo cancela la anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (build, pruebas, auditoría)
+    runs-on: ubuntu-latest
+
+    # Postgres desechable solo para esta ejecución. Las pruebas crean ahí el
+    # esquema "test" desde database/schema/init.sql; no se usa Supabase ni
+    # ningún secreto.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restaurar
+        run: dotnet restore backend.Tests
+
+      - name: Compilar
+        run: dotnet build backend.Tests --no-restore
+
+      - name: Pruebas
+        run: dotnet test backend.Tests --no-build
+
+      - name: Paquetes NuGet vulnerables
+        run: |
+          dotnet list backend package --vulnerable --include-transitive | tee nuget-audit.txt
+          if grep -q "has the following vulnerable packages" nuget-audit.txt; then
+            echo "::error::Hay paquetes NuGet con vulnerabilidades conocidas."
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend (lint, build, auditoría)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # Bloquea: vulnerabilidades altas o críticas en lo que llega al usuario.
+      - name: Auditoría de dependencias de producción
+        run: npm audit --omit=dev --audit-level=high
+
+      # Informa sin bloquear: las herramientas de desarrollo reciben avisos
+      # nuevos con frecuencia y no forman parte del build publicado.
+      - name: Auditoría completa (informativa)
+        run: npm audit || true

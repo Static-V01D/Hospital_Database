@@ -10,3 +10,6 @@ Contraseña de la base de datos -> NO se guarda en el repositorio.
        dotnet user-secrets set "Supabase:DbPassword" "<contraseña>"
 
 Probar la conexión -> http://localhost:5198/api/health
+
+dotnet test backend.Tests -> correr las pruebas del Backend (desde la raíz; detener antes el Backend si está corriendo)
+  Usan el esquema "test" de la base de datos; no tocan los datos reales.
